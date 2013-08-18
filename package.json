@@ -1,0 +1,30 @@
+{
+  "name": "pingstat",
+  "version": "0.0.1",
+  "description": "System monitor event emitter",
+  "main": "index.js",
+  "scripts": {
+    "test": "make test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/binocarlos/pingstat.git"
+  },
+  "keywords": [
+    "system",
+    "monitor"
+  ],
+  "author": "Kai Davenport",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/binocarlos/pingstat/issues"
+  },
+  "devDependencies": {
+    "should": "*",
+    "mocha": "*"
+  },
+  "dependencies": {
+    "os-utils": "0.0.14",
+    "async": "~0.2.9"
+  }
+}

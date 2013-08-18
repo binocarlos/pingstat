@@ -1,64 +1,47 @@
-var fs = require('fs');
-var _ = require('lodash');
-var osnode = require("os");
-var exec = require('child_process').exec;
 
+var exec = require('child_process').exec;
+var EventEmitter = require('events').EventEmitter;
+var util = require('util');
 var os  = require('os-utils');
 var async = require('async');
-var StatsDClient = require('statsd-client');
 
-var hostname = osnode.hostname();
-var stats = new StatsDClient({host: 'hq.local', port: 8125, prefix: 'server.' + hostname,  debug: false});
-
-var config = {
-	pidfolder:'/srv/diggerstack/run',
-	startdelay:1,
-	monitordelay:5000,
-	systemdelay:5000
+function Monitor(options){
+	this.options = options || {
+		delay:1000,
+		interval:5000
+	}
 }
 
-if(fs.existsSync(__dirname + '/config.json')){
-	config = _.extend(config, require(__dirname + '/config.json'));
+util.inherits(Monitor, EventEmitter);
+
+Monitor.prototype.interval = function(delay){
+	this.options.interval = interval;
+	this.stop();
+	this.start();
+	return this;
 }
 
-/*
-
-	reads the mongroup run folder for pids
+Monitor.prototype.start = function(){
+	var self = this;
+	this.interval_id = setTimeout(function(){
+		self.stat();
+		self.interval_id = setInterval(function(){
+			self.stat();
+		}, self.options.interval || 5000);
+	}, self.options.delay || 1000);
 	
-
-function getpids(){
-	var files = fs.readdirSync(config.pidfolder);
-
-	function filtermongroups(file){
-		return !file.match(/\.mon\.pid$/);
-	}
-
-	function loadpidnumber(file){
-		return fs.readFileSync(config.pidfolder + '/' + file, 'utf8').replace(/\W/g, '');
-	}
-
-	return _.map(_.filter(files, filtermongroups), loadpidnumber)
+	return this;
 }
 
-function start(){
-	return;
-	var pids = getpids();
-
-	var group = procmon.monitor({
-	  pid: pids.splice(0,2),
-	  interval: config.monitordelay,
-	  format: 'PID {pid} - {cpu}% CPU - {mem} memory'
-	}).start();
-
-	group.on('stats', function(stats) {
-	  console.log(stats.out);
-	});
-
-	console.dir(pids);
+Monitor.prototype.stop = function(){
+	if(this.interval_id){
+		clearInterval(this.interval_id);	
+	}
+	return this;
 }
-*/
-function systemmonitor(){
 
+Monitor.prototype.stat = function(){
+	var self = this;
 	async.parallel({
 		os:function(done){
 			os.cpuUsage(function(v){
@@ -66,11 +49,6 @@ function systemmonitor(){
 				var packet = {
 					cpu:{
 						usage:v
-					},
-					memory:{
-						total:os.totalmem(),
-						free:os.freemem(),
-						percentfree:os.freememPercentage()
 					},
 					load:{
 						load1:os.loadavg(1),
@@ -83,36 +61,33 @@ function systemmonitor(){
 
 				}
 
-				_.each(packet, function(obj, groupname){
-					_.each(obj, function(val, prop){
-						stats.gauge(groupname + '.' + prop, val);
-					})
-				})
-
+				done(null, packet);
 			})
 		},
-		realmem:function(){
+		memory:function(next){
 			exec('free',
 			  function (error, stdout, stderr) {
-			  	_.each(stdout.split(/\n/), function(line){
+			  	(stdout.split(/\n/)).forEach(function(line){
 			  		line.replace(/buffers\/cache\D+(\d+)\D+(\d+)/, function(){
-			  			stats.gauge('memory.real_used', parseInt(arguments[1]));
-			  			stats.gauge('memory.real_free', parseInt(arguments[2]));
+			  			var used = parseInt(arguments[1]);
+			  			var free = parseInt(arguments[2]);
+			  			var total = used + free;
+			  			next(null, {
+			  				used:used,
+			  				free:free,
+			  				total:total
+			  			})
 			  		})
 			  	})
 			});
 		}
 	}, function(error, data){
-
+		var packet = data.os || {};
+		packet.memory = data.memory;
+		self.emit('stat', packet);
 	})
-
 }
 
-/*
-
-	we delay a small part because we want the services to get started
-	
-*/
-//setTimeout(start, config.startdelay);
-setInterval(systemmonitor, config.systemdelay);
-systemmonitor();
+module.exports = function(options){
+	return new Monitor(options);
+}
